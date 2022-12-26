@@ -28,19 +28,20 @@ use core::ops::Range;
 use primitive_types::U256;
 
 /// Core execution layer for EVM.
+#[derive(Debug, Clone)]
 pub struct Machine {
 	/// Program data.
 	data: Rc<Vec<u8>>,
-	/// Program code.
-	code: Rc<Vec<u8>>,
-	/// Program counter.
-	position: Result<usize, ExitReason>,
 	/// Return value.
 	return_range: Range<U256>,
 	/// Code validity maps.
 	valids: Valids,
 	/// Memory.
 	memory: Memory,
+	/// Program code.
+	code: Rc<Vec<u8>>,
+	/// Program counter.
+	position: Result<usize, ExitReason>,
 	/// Stack.
 	stack: Stack,
 }
@@ -129,7 +130,17 @@ impl Machine {
 
 	/// Loop stepping the machine, until it stops.
 	pub fn run(&mut self) -> Capture<ExitReason, Trap> {
+		let mut counter = 0;
 		loop {
+			if counter == 11 {
+				println!("{:#?}", &self);
+				let i = self.position().as_ref().unwrap();
+				let len = self.code.len();
+				println!("\n{:?}", &self.code.as_slice()[*i..len]);
+			}
+
+			counter += 1;
+
 			match self.step() {
 				Ok(()) => (),
 				Err(res) => return res,

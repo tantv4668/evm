@@ -208,3 +208,339 @@ pub fn revert(state: &mut Machine) -> Control {
 	state.return_range = start..(start + len);
 	Control::Exit(ExitRevert::Reverted.into())
 }
+
+#[cfg(test)]
+mod tests {
+	// use super::Control;
+	use crate::{eval::misc::pop, Machine};
+	use core::str::FromStr;
+	use primitive_types::H256;
+	use std::rc::Rc;
+
+	use super::codecopy;
+
+	#[test]
+	fn test_codesize() {
+		use crate::eval::misc::codesize;
+
+		let code_str = "00010203040506070809";
+		let data_str = "";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		codesize(&mut vm);
+
+		assert_eq!(vm.stack.data(), &vec![H256::from_low_u64_be(10)]);
+	}
+
+	#[test]
+	fn test_codecopy() {
+		let code_str = "AABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBCCDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDEEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+		let data_str = "";
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+		_ = vm.stack.push(H256::from_low_u64_be(32));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+		assert_eq!(
+			vm.stack.data(),
+			&vec![
+				H256::from_low_u64_be(32),
+				H256::from_low_u64_be(0),
+				H256::from_low_u64_be(0)
+			]
+		);
+
+		codecopy(&mut vm);
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb
+			]
+		);
+		assert_eq!(vm.stack.data(), &vec![]);
+
+		_ = vm.stack.push(H256::from_low_u64_be(8));
+		_ = vm.stack.push(H256::from_low_u64_be(32));
+		_ = vm.stack.push(H256::from_low_u64_be(32));
+		assert_eq!(
+			vm.stack.data(),
+			&vec![
+				H256::from_low_u64_be(8),
+				H256::from_low_u64_be(32),
+				H256::from_low_u64_be(32)
+			]
+		);
+
+		codecopy(&mut vm);
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd
+			]
+		);
+		assert_eq!(vm.stack.data(), &vec![]);
+	}
+
+	#[test]
+	fn test_calldataload() {
+		use crate::eval::misc::calldataload;
+		let code_str = "";
+		let data_str = "AABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBCCDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDEEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+		assert_eq!(vm.stack.data(), &vec![H256::from_low_u64_be(0)]);
+		calldataload(&mut vm);
+
+		assert_eq!(
+			vm.stack.data(),
+			&vec![H256::from_str(
+				"0xaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			)
+			.unwrap()]
+		);
+
+		_ = vm.stack.push(H256::from_low_u64_be(2));
+		assert_eq!(
+			vm.stack.data(),
+			&vec![
+				H256::from_str(
+					"0xaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				)
+				.unwrap(),
+				H256::from_low_u64_be(2)
+			]
+		);
+
+		calldataload(&mut vm);
+		assert_eq!(
+			vm.stack.data(),
+			&vec![
+				H256::from_str(
+					"0xaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				)
+				.unwrap(),
+				H256::from_str(
+					"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccdd"
+				)
+				.unwrap()
+			]
+		);
+	}
+
+	#[test]
+	fn test_calldatasize() {
+		use crate::eval::misc::calldatasize;
+		let code_str = "";
+		let data_str = "AABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		calldatasize(&mut vm);
+
+		assert_eq!(vm.stack.data(), &vec![H256::from_low_u64_be(32)]);
+	}
+
+	#[test]
+	fn test_calldatacopy() {
+		use crate::eval::misc::calldatacopy;
+
+		let code_str = "";
+		let data_str = "AABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_low_u64_be(32));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		calldatacopy(&mut vm);
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb
+			]
+		);
+
+		_ = vm.stack.push(H256::from_low_u64_be(8));
+		_ = vm.stack.push(H256::from_low_u64_be(31));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		calldatacopy(&mut vm);
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xbb, 0xbb
+			]
+		);
+	}
+
+	#[test]
+	fn test_pop() {
+		use crate::eval::misc::pop;
+
+		let code_str = "";
+		let data_str = "";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_low_u64_be(32));
+		assert_eq!(vm.stack.data(), &vec![H256::from_low_u64_be(32)]);
+		pop(&mut vm);
+		assert_eq!(vm.stack.data(), &vec![]);
+	}
+
+	#[test]
+	fn test_mstore() {
+		use crate::eval::misc::mstore;
+
+		let code_str = "";
+		let data_str = "";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_low_u64_be(255));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		mstore(&mut vm);
+
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0xff
+			]
+		);
+
+		_ = vm.stack.push(H256::from_low_u64_be(200));
+		_ = vm.stack.push(H256::from_low_u64_be(1));
+
+		mstore(&mut vm);
+
+		assert_eq!(
+			vm.memory.data(),
+			&vec![
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0xc8
+			]
+		);
+	}
+
+	#[test]
+	fn test_mload() {
+		use crate::eval::misc::{mload, mstore};
+
+		let code_str = "";
+		let data_str = "";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_slice(&vec![
+			0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+			0xbb, 0xbb, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd,
+			0xdd, 0xdd, 0xdd, 0xdd,
+		]));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		mstore(&mut vm);
+
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		mload(&mut vm);
+
+		assert_eq!(
+			vm.stack().data(),
+			&vec![H256::from_slice(&vec![
+				0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xbb, 0xbb, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd,
+				0xdd, 0xdd, 0xdd, 0xdd,
+			])]
+		);
+
+		pop(&mut vm);
+
+		_ = vm.stack.push(H256::from_slice(&vec![
+			0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+			0xbb, 0xbb, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd,
+			0xdd, 0xdd, 0xdd, 0xdd,
+		]));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		mstore(&mut vm);
+
+		_ = vm.stack.push(H256::from_low_u64_be(2));
+
+		mload(&mut vm);
+
+		assert_eq!(
+			vm.stack().data(),
+			&vec![H256::from_slice(&vec![
+				0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
+				0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd,
+				0xdd, 0xdd, 0x00, 0x00,
+			])]
+		);
+	}
+
+	#[test]
+	fn test_mstore8() {
+		use crate::eval::misc::mstore8;
+
+		let code_str = "";
+		let data_str = "";
+
+		let code = hex::decode(code_str).unwrap();
+		let data = hex::decode(data_str).unwrap();
+
+		let mut vm = Machine::new(Rc::new(code), Rc::new(data), 1024, 10000);
+
+		_ = vm.stack.push(H256::from_low_u64_be(255));
+		_ = vm.stack.push(H256::from_low_u64_be(0));
+
+		mstore8(&mut vm);
+
+		assert_eq!(vm.memory.data(), &vec![0xff]);
+
+		_ = vm.stack.push(H256::from_low_u64_be(200));
+		_ = vm.stack.push(H256::from_low_u64_be(1));
+
+		mstore8(&mut vm);
+
+		assert_eq!(vm.memory.data(), &vec![0xff, 0xc8]);
+	}
+}
